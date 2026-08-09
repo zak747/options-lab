@@ -1,0 +1,24 @@
+# Environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Raw vendor data — NOT redistributed (see DEVIATIONS.md, DD3)
+data/raw/*.parquet
+data/raw/*.json
+data/raw/*.json.gz
+!data/raw/.gitkeep
+
+# Derived strips ARE committed — do not ignore data/processed/
