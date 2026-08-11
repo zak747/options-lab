@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+import numpy as np
+from scipy.special import ndtr
+from scipy.stats import norm
+
 """Black-Scholes in forward / discount-factor form, with analytic Greeks.
 
 This module is the reference implementation for the whole project. Monte
@@ -17,77 +23,54 @@ Benchmarks produced here: 1 (put-call parity), 2 (Greeks vs finite
 difference). See BENCHMARKS.md.
 """
 
-from __future__ import annotations
-
-import numpy as np
-
 __all__ = ["d1_d2", "bs_price", "bs_greeks", "forward_from_spot"]
 
 
 def forward_from_spot(S, r, q, T):
-    """Convenience converter, F = S * exp((r - q) * T).
+    F = S * np.exp((r - q) * T)
+    return F
+    
+def _prepare(F, K, T, sigma, df):
+    F, K, T, sigma, df = np.broadcast_arrays(F, K, T, sigma, df)
+    v = sigma * np.sqrt(T)
+    degenerate = v < 1e-12
+    v_safe = np.where(degenerate, 1.0, v)
+    return F, K, T, sigma, df, v_safe, degenerate
 
-    Provided only for synthetic tests and textbook examples where r and q
-    are given. Never used on real chain data, where the forward is inferred
-    from the quotes instead (see chain.implied_forward).
-    """
-    raise NotImplementedError
+def d1_d2(F, K, v):
+    d1 = ((np.log(F / K)) + (0.5 * (v ** 2))) / v
+    d2 = d1 - v
+    return d1, d2
 
-
-def d1_d2(F, K, T, sigma):
-    """Return (d1, d2), the two arguments of the normal CDF.
-
-    d1 = (log(F / K) + 0.5 * sigma**2 * T) / (sigma * sqrt(T))
-    d2 = d1 - sigma * sqrt(T)
-
-    Split into its own function because it is where every sign error in a
-    Black-Scholes implementation lives, and so it can be tested directly.
-
-    Degenerate inputs (T == 0 or sigma == 0) are handled by the callers,
-    not here; this function assumes sigma * sqrt(T) > 0.
-    """
-    raise NotImplementedError
-
-
-def bs_price(F, K, T, sigma, df, is_call=True):
-    """Undiscounted-forward Black-Scholes price, discounted by `df`.
-
-    Parameters
-    ----------
-    F, K, T, sigma, df : array_like
-        Forward, strike, time to expiry in years, volatility, discount
-        factor. All broadcast against one another.
-    is_call : array_like of bool
-        True for calls, False for puts. Broadcasts with the rest.
-
-    Returns
-    -------
-    ndarray
-
-    Edge cases that must be handled explicitly rather than falling out of
-    the algebra:
-      - T == 0        -> payoff on the forward, discounted
-      - sigma == 0    -> discounted intrinsic value on the forward
-      - deep wings    -> N(d) saturates; check no NaN is produced
-    """
-    raise NotImplementedError
-
+def bs_price(F, K, T, sigma, df, is_call = True):
+    F, K, T, sigma, df, v_safe, degenerate = _prepare(F, K, T, sigma, df)
+    d1, d2 = d1_d2(F, K, v_safe)
+    w = np.where(is_call, 1.0, -1.0)
+    price = w * df * (F * ndtr(w * d1) - K * ndtr(w * d2))
+    intrinsic = df * np.maximum(w * (F - K), 0.0)
+    return np.where(degenerate, intrinsic, price)
 
 def bs_greeks(F, K, T, sigma, df, is_call=True):
-    """Analytic Greeks.
+    F, K, T, sigma, df, v_safe, degenerate = _prepare(F, K, T, sigma, df)
+    d1, d2 = d1_d2(F, K, v_safe)
+    w = np.where(is_call, 1.0, -1.0)
+    phi_d1 = np.exp(-0.5 * d1 ** 2) / np.sqrt(2.0 * np.pi)
 
-    Returns
-    -------
-    dict with keys 'delta', 'gamma', 'vega', 'theta', 'rho'.
+    # compute
+    delta = w * df * ndtr(w * d1)
+    gamma = df * phi_d1 / (F * v_safe)
+    vega = df * F * phi_d1 * np.sqrt(T)
+    theta = -df * F * phi_d1 * sigma ** 2 / (2.0 * v_safe)
+    rho = -T * bs_price(F, K, T, sigma, df, is_call)
 
-    Conventions must be stated in the docstring once chosen and then held
-    consistently across the project:
-      - delta is with respect to the FORWARD, not spot (DD1). Record the
-        spot-delta conversion in DEVIATIONS.md if it is ever needed.
-      - vega is per 1.00 of volatility (not per vol point).
-      - theta is per year (not per day).
+    # then overwrite the degenerate entries
+    itm = w * (F - K) > 0
+    delta = np.where(degenerate, np.where(itm, w * df, 0.0), delta)
+    gamma = np.where(degenerate, np.where(F == K, np.inf, 0.0), gamma)
+    vega = np.where(degenerate, 0.0, vega)
+    theta = np.where(degenerate, 0.0, theta)
 
-    Note gamma and vega are identical for a call and the put of the same
-    strike; that gives a free consistency test.
-    """
-    raise NotImplementedError
+    return {"delta": delta, "gamma": gamma, "vega": vega,
+            "theta": theta, "rho": rho}
+    
+

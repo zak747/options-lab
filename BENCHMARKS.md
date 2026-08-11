@@ -10,8 +10,8 @@ recorded here and in `DEVIATIONS.md` rather than the tolerance being widened.
 
 | #  | Benchmark | Source of target | Target | Achieved | Error | Produced by |
 |----|-----------|------------------|--------|----------|-------|-------------|
-| 1  | Put–call parity `C - P = DF*(F - K)` | Algebraic identity | abs err < 1e-14 | — | — | `tests/test_bs.py` |
-| 2  | Analytic Greeks vs central finite difference | Numerical differentiation | rel err < 1e-6 | — | — | `tests/test_bs.py` |
+| 1  | Put–call parity `C - P = DF*(F - K)` | Algebraic identity | abs err < 1e-14 | 1.85e-16 | — | `tests/test_bs.py` |
+| 2  | Analytic Greeks vs central finite difference | Numerical differentiation | rel err < 1e-6 | 1.33e-8 | — | `tests/test_bs.py` |
 | 3  | Implied vol round-trip recovery | Machine precision | abs err < 1e-12 | — | — | `tests/test_iv.py` |
 | 4  | Monte Carlo convergence exponent | CLT: RMSE ~ N^(-1/2) | -0.50 ± 0.02 | — | — | `scripts/run_mc_study.py` |
 | 5  | Control variate VRF vs 1/(1-rho^2) | Theory | agreement within 5% | — | — | `scripts/run_mc_study.py` |

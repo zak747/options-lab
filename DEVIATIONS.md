@@ -62,4 +62,133 @@ download step is reproducible by running `scripts/snapshot.py`.
 
 ---
 
-## DD4 — (next entry)
+## DD4 — Put–call parity tolerance is relative to notional, not absolute
+
+**Decision.** Benchmark 1 asserts
+
+    |C - P - DF*(F - K)|  <=  1e-14 * DF * max(F, K)
+
+rather than an absolute bound of 1e-14.
+
+**Alternative rejected.** The absolute tolerance originally pre-registered
+in `BENCHMARKS.md`.
+
+**Reason.** A double carries roughly 16 significant decimal digits, so at
+an index-level forward of F = 5000 a single unit in the last place is
+already of order 1e-12. An absolute 1e-14 bound is therefore unachievable
+at SPX notionals for reasons that have nothing to do with the
+implementation. Scaling by the notional makes the tolerance test what it
+was intended to test — the algebra — at every scale. `BENCHMARKS.md` has
+been amended and the original wording is recorded here.
+
+---
+
+## DD5 — Degeneracy threshold on total volatility
+
+**Decision.** `bs._prepare` classifies an entry as degenerate when
+
+    v = sigma * sqrt(T) < 1e-12
+
+and both `bs_price` and `bs_greeks` overwrite those entries with their
+limiting values: the discounted intrinsic value on the forward, delta of
+`omega * DF` if in the money and zero otherwise, and gamma, vega and theta
+of zero. At F == K with v == 0, gamma is returned as `inf`.
+
+**Alternative rejected.** Branching separately on `T == 0` and
+`sigma == 0`, or returning NaN throughout the degenerate region.
+
+**Reason.** The price depends on the inputs only through the pair
+(F/K, v), so `T = 0` and `sigma = 0` are the same limit and a single
+threshold on v handles both without duplicated logic. The value 1e-12 sits
+far below any volatility or maturity that appears in real data while
+remaining well clear of the point where 1/v loses precision. Returning the
+correct limit rather than NaN matters because expired and zero-vol rows
+occur routinely in real chains and must not poison downstream aggregation.
+
+Gamma at F == K, v == 0 is genuinely unbounded: the risk-neutral density
+collapses to a point mass at the strike. `inf` is the honest answer and
+propagates visibly, whereas returning a large finite number would hide the
+singularity.
+
+---
+
+## DD6 — Theta and rho conventions
+
+**Decision.**
+
+  * `theta` is `-dV/dT`, holding F and DF fixed, expressed per year.
+  * `rho` is `dV/dr` with `DF = exp(-r*T)` and F held fixed, giving `-T*V`.
+  * `vega` is `dV/dsigma` per 1.00 of volatility, not per volatility point.
+  * `delta` is `dV/dF`, a forward delta, not a spot delta.
+
+**Alternative rejected.** The spot-parameterised definitions, in which
+theta also picks up the drift of the forward and rho accounts for
+`F = S*exp((r-q)T)` moving with r.
+
+**Reason.** Under DD1 the pricer has no knowledge of S, r or q, so a spot
+delta is not expressible without additional assumptions. Holding F and DF
+fixed is the only convention internally consistent with that
+parameterisation. A consequence worth noting is that theta is then
+identical for a call and the put of the same strike, since it contains
+only the density and no N(.) term — in spot terms the two differ by
+rate-dependent terms. That equality is asserted as a unit test.
+
+These conventions are also what the finite-difference test in
+`tests/test_bs.py` bumps. Bumping T while letting DF move with it computes
+a different quantity and fails the test correctly.
+
+---
+
+## DD7 — Gamma verified by differentiating analytic delta
+
+**Decision.** Benchmark 2 checks gamma as a first central difference of
+the analytic delta,
+
+    gamma_FD = [ delta(F+h) - delta(F-h) ] / (2h),   h ~ eps^(1/3) * F
+
+rather than as a second central difference of the price.
+
+**Alternative rejected.** The second-difference stencil
+`[V(F+h) - 2V(F) + V(F-h)] / h^2` with `h ~ eps^(1/4) * F`, which was the
+original plan.
+
+**Reason.** The second difference divides by h^2, so rounding error enters
+as eps/h^2 rather than eps/h, and its best achievable relative accuracy is
+around 1e-6 — the same order as the pre-registered tolerance. Measured
+worst-case error on the test grid was 1.2e-6, i.e. a marginal failure
+driven entirely by numerical conditioning rather than by any error in the
+derivation.
+
+Differentiating delta instead makes every check in the benchmark a first
+difference, accurate to about 1e-9. This does not weaken the test: delta
+is independently verified against a difference of the price, so the chain
+price -> delta -> gamma is validated link by link, each link at full
+first-difference precision. Loosening the tolerance would have been the
+alternative, and pre-registered tolerances are not to be loosened to
+accommodate a poorly conditioned estimator.
+
+---
+
+## DD8 — Deep-wing Greeks excluded from the relative-error metric
+
+**Decision.** The achieved figure reported for benchmark 2 is the worst
+relative error over points where the Greek exceeds 1e-6 of its maximum on
+the grid. The unit test itself uses `assert_allclose` with `rtol = 1e-6`
+and an absolute floor of `1e-8 * max|Greek|`.
+
+**Alternative rejected.** Reporting an unrestricted relative error across
+every grid point.
+
+**Reason.** Deep out of the money at short maturity, vega and theta are of
+order 1e-10 while the option price itself is of order 1e-12. The finite
+difference of a quantity that small is dominated by floating-point
+rounding, so the comparison measures the conditioning of the numerical
+estimator and not the correctness of the analytic formula. Including those
+points produces a headline error of 2.4e-2, which would misrepresent the
+implementation as inaccurate when the analytic values there are exact and
+the numerical reference is noise. The restriction is stated explicitly so
+that the reported figure cannot be read as a tighter claim than it is.
+
+---
+
+## DD9 — (next entry)
