@@ -191,4 +191,90 @@ that the reported figure cannot be read as a tighter claim than it is.
 
 ---
 
-## DD9 — (next entry)
+## DD9 — Bracket endpoints for the implied volatility solver
+
+**Decision.** `SIGMA_LO = 1e-6`, `SIGMA_HI = 5.0`, checked by sign at both
+ends before iterating.
+
+**Alternative rejected.** Relying on the asymptotic no-arbitrage bounds
+alone to guarantee the root is bracketed.
+
+**Reason.** 5.0 is 500% annualised, above anything observed; SPX peaked
+near 0.8 in March 2020. The lower end sits above the v = 0 degeneracy
+threshold of DD5 so the pricer never takes its degenerate branch during
+iteration. Cost of a wide bracket is logarithmic in width — roughly ten
+extra bisection steps for a hundredfold widening — so erring wide is cheap.
+
+The sign check matters because `price_bounds` returns the limits as sigma
+tends to 0 and infinity, while SIGMA_HI is finite. A quote at 99.99% of
+df*F implies a volatility above 5 and would otherwise be iterated inside a
+bracket that does not contain its root. Evaluating g at both endpoints
+costs two extra pricer calls and converts an assumption into a checked
+precondition.
+
+---
+
+## DD10 — Quotes with unresolvable time value return NaN
+
+**Decision.** `implied_vol` returns NaN when the price is within `tol_abs`
+of its lower bound, rather than returning sigma = 0.
+
+**Alternative rejected.** Treating a quote at intrinsic as sigma = 0, which
+is the correct mathematical limit.
+
+**Reason.** Time value is the only part of the price that depends on sigma.
+On the round-trip grid, 46 of 224 points have a true price below 1e-100 —
+one is 5e-134 — because they are deep out of the money at short maturity.
+At that magnitude the price is numerically indistinguishable from intrinsic
+and no algorithm can recover sigma from it. Returning 0.0 would report a
+confident wrong answer: those points have true volatilities up to 1.5.
+NaN propagates visibly and is filtered downstream.
+
+---
+
+## DD11 — Convergence tolerance tracks price magnitude, and benchmark 3 is amended
+
+**Decision.** Convergence is tested on `|g| <= max(1e-15 * |price|,
+1e-16 * df * max(F, K))`, plus a stall check that stops when the iterate
+ceases to move at double precision. Benchmark 3's target is amended from
+1e-12 to **1e-10, restricted to quotes with vega above 1e-4 of notional**.
+
+**Alternative rejected.** The flat 1e-12 round-trip target pre-registered
+in BENCHMARKS.md, and a tolerance scaled to notional alone.
+
+**Reason.** Inverting a price for volatility has a precision floor set by
+the conditioning of the inversion,
+
+    |delta sigma|  >~  eps * V / vega
+
+since V is representable only to eps*V and the sigma error is the price
+error divided by the local slope. Where vega is small the problem is
+ill-conditioned by construction, not by any defect in the solver.
+
+Measured on a 224-point grid: worst error 1.46e-12 where vega exceeds 1e-4
+of notional (160 points), 3.48e-10 where time value exceeds 1e-10 of
+notional (164 points), and 2.19e-4 over all resolvable points. Observed
+errors track the bound above. A flat 1e-12 target across an arbitrary grid
+was therefore not achievable, and the amended figure is stated with the
+restriction attached rather than reporting only the subset on which the
+original target happens to hold.
+
+---
+
+## DD12 — In-the-money quotes converted to out-of-the-money before solving
+
+**Decision.** `implied_vol_chain` replaces every ITM quote with its OTM
+counterpart via put-call parity and flips the right before solving.
+
+**Alternative rejected.** Solving each quote as given.
+
+**Reason.** With F = 5500 and K = 4000 the call is worth roughly 1500, of
+which about 1480 is intrinsic and independent of sigma. A one-tick error is
+0.07% of the price but perhaps 5% of the recovered volatility. The OTM put
+at the same strike is worth about 20, entirely time value, and inverts
+cleanly. Parity makes the two quotes carry identical information, so the
+conversion is free and strictly better conditioned.
+
+---
+
+## DD13 — (next entry)

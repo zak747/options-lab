@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.special import ndtr
-from scipy.stats import norm
 
 """Black-Scholes in forward / discount-factor form, with analytic Greeks.
 
