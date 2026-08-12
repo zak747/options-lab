@@ -485,29 +485,32 @@ refinement of one.
 **Decision.** `hedge.spot_delta` computes dV/dS = N(d1) directly rather
 than calling `bs_greeks` and using its delta.
 
-**Alternative rejected.** Using bs_greeks(...)["delta"] as the hedge ratio.
+**Alternative rejected.** Using `bs_greeks(...)["delta"]` as the hedge ratio.
 
-**Reason.** Under the forward parameterisation (DD1, DD6) bs_greeks returns
-dV/dF = df*N(d1). The hedge trades the underlying, so the required ratio is
+**Reason.** Under the forward parameterisation (DD1, DD6) `bs_greeks`
+returns dV/dF = DF*N(d1). The hedge trades the underlying, so the required
+ratio is
 
-    dV/dS = dV/dF * dF/dS = df*N(d1) * exp(r*tau) = N(d1)
+    dV/dS = dV/dF * dF/dS = DF*N(d1) * exp(r*tau) = N(d1)
 
 and the discount factor cancels. Using the forward delta would understate
-every position by df — about 2% at r = 2% and one year to expiry. The
-error produces no exception and no obviously wrong number; it appears only
-as a small systematic P&L bias that is hard to attribute after the fact.
-Verified against a finite difference of the price with respect to spot.
+every position by DF — about 2% at r = 2% with one year to expiry. The
+error produces no exception and no obviously wrong number; it would appear
+only as a small systematic P&L bias that is hard to attribute after the
+fact. Verified against a central finite difference of the price with
+respect to spot.
 
 ---
 
 ## DD28 — Measured hedging exponent is -0.487, not -0.500
 
 **Observation, not a choice.** The fitted exponent over n in [10, 640] is
--0.4869 with a standard error of 0.0010, i.e. thirteen standard errors
-from the theoretical -0.5.
+-0.4869 with a standard error of 0.0010, i.e. thirteen standard errors from
+the theoretical -0.5.
 
-**Reason.** Boyle & Emanuel's result is asymptotic in n. Restricting the
-fit to larger n moves the estimate monotonically toward the limit:
+**Reason.** Boyle & Emanuel's result is asymptotic in the rebalance count.
+Restricting the fit to larger n moves the estimate monotonically toward the
+limit:
 
     fit from n =  10 -> -0.4879
     fit from n =  40 -> -0.4895
@@ -515,12 +518,37 @@ fit to larger n moves the estimate monotonically toward the limit:
 
 The discrepancy is a finite-n correction, not a defect in the simulation.
 It is recorded because reporting -0.49 as though it were -0.50 would
-misrepresent the precision, and because the direction and magnitude of the
-correction are themselves evidence the experiment is behaving correctly.
+misstate the precision, and because the direction and magnitude of the
+correction are themselves evidence that the experiment behaves correctly.
 
 ---
 
-## DD29 — Volatility mismatch reported for two hedging conventions
+## DD29 — Volatility mismatch reported under two hedging conventions
 
-**Decision.** `vol_mismatch_study` runs with the hedge delta computed
-either at the realised
+**Decision.** `vol_mismatch_study` computes the hedge delta either at the
+volatility that realises or at the volatility the option was sold at, and
+both are reported.
+
+**Alternative rejected.** Reporting mean P&L under a single convention.
+
+**Reason.** The two have the same expectation and very different risk, so
+one number would obscure the result. Selling a one-year ATM call at 20%,
+50,000 paths, 500 rebalances:
+
+    realised   hedged at realised        hedged at priced
+    vol        mean      std             mean      std
+    0.10       +3.979    0.155           +3.981    1.005
+    0.15       +1.995    0.234           +1.995    0.681
+    0.20       +0.001    0.312           +0.001    0.312
+    0.25       -1.992    0.390           -1.992    0.921
+    0.30       -3.983    0.467           -3.980    1.869
+
+Hedging at the realised volatility makes the P&L deterministic up to
+discretisation, equal to [V(sigma_priced) - V(sigma_realised)] * exp(rT),
+and the simulated means agree with that closed form to within a standard
+error at every point. Hedging at the priced volatility delivers the same
+expectation as accumulated gamma P&L against realised moves, with a
+standard deviation up to 6.5 times larger. Since the realised volatility is
+not known in advance, the second convention is the one that describes an
+actual book.
+

@@ -9,13 +9,22 @@ implemented from first principles in Python.
 
 | Result | Target | Achieved |
 |--------|--------|----------|
-| VIX reconstructed from raw SPX chains vs CBOE published close | < 0.20 vol points | TBD |
-| American put table, Longstaff & Schwartz (2001) | within published s.e. | TBD |
-| Monte Carlo convergence exponent | -0.50 ± 0.02 | TBD |
-| SVI static arbitrage violations | 0 | TBD |
+| VIX reconstructed from raw SPX chains vs CBOE published close | < 0.20 vol points | pending data collection |
+| American put table, Longstaff & Schwartz (2001) | within published s.e. | pending |
+| Monte Carlo convergence exponent | -0.50 ± 0.02 | -0.5054 |
+| Discrete hedging error exponent | -0.50 ± 0.05 | -0.4869 ± 0.0010 |
+| SVI static arbitrage violations | 0 | 0 |
+| Forward extracted from put-call parity | < 1e-4 relative | 8.5e-7 |
 
-Full table, including the tolerances fixed in advance, in
-[`BENCHMARKS.md`](BENCHMARKS.md).
+Full table, including the tolerances fixed in advance and the two that were
+amended with reasons, in [`BENCHMARKS.md`](BENCHMARKS.md).
+
+Selected supporting measurements: the implied volatility solver runs at
+273,000 solves/sec with a mean of 3.9 iterations; antithetic sampling is
+measured *increasing* variance by a factor of 1.9 on a straddle, which is
+the condition under which the technique fails; and 44 butterfly arbitrage
+violations found in mid quotes fall to zero when priced at executable
+bid-ask levels.
 
 ## What this is
 
