@@ -1,67 +1,76 @@
-"""Longstaff-Schwartz least-squares Monte Carlo for American options.
-
-Early exercise turns pricing into an optimal stopping problem. At each
-exercise date the continuation value is needed: what is holding worth,
-against exercising now? Longstaff and Schwartz estimate it by regression.
-
-Working backwards from expiry:
-
-  1. Set cashflow = terminal payoff on every path.
-  2. Step back one date. Select the paths that are IN THE MONEY — only
-     these enter the regression.
-  3. Regress the discounted future cashflow on basis functions of the
-     current underlying price.
-  4. The fitted value is the estimated continuation value. Where
-     immediate exercise exceeds it, exercise: record the payoff at this
-     date and zero all later cashflows on that path.
-  5. Repeat to time zero, discount, average.
-
-Points to record in DEVIATIONS.md:
-  - Restricting the regression to ITM paths is essential; including OTM
-    paths wrecks the fit and biases the price.
-  - The resulting price is a LOWER BOUND in expectation, because the
-    estimated exercise policy is suboptimal.
-  - The basis function choice materially affects the answer, so run a
-    sensitivity check over degree and family.
-
-Reference: Longstaff & Schwartz (2001), "Valuing American Options by
-Simulation: A Simple Least-Squares Approach", Review of Financial
-Studies 14(1), 113-147.
-"""
-
 import numpy as np
 
-__all__ = ["laguerre_basis", "polynomial_basis", "lsm_price"]
+from optionslab.mc import simulate_paths
 
 
-def laguerre_basis(S, degree):
-    """Weighted Laguerre polynomials, as used in the source paper.
+def laguerre_basis(x, degree):
+    weight = np.exp(-0.5 * x)
+    columns = [np.ones_like(x)]
+    if degree >= 1:
+        columns.append(1.0 - x)
+    for order in range(1, degree):
+        previous = columns[order]
+        two_back = columns[order - 1]
+        next_column = ((2.0 * order + 1.0 - x) * previous - order * two_back) / (order + 1.0)
+        columns.append(next_column)
+    return np.column_stack([weight * column for column in columns])
 
-    Return the design matrix of shape (len(S), degree + 1).
-    """
-    raise NotImplementedError
+
+def polynomial_basis(x, degree):
+    columns = [x ** power for power in range(degree + 1)]
+    return np.column_stack(columns)
 
 
-def polynomial_basis(S, degree):
-    """Plain powers of S. Works about as well in practice; keep both so
-    the sensitivity check has something to compare."""
-    raise NotImplementedError
+def simulate_spot_paths(S0, r, q, T, sigma, n_paths, n_steps, rng, antithetic=True):
+    martingale = simulate_paths(S0, T, sigma, n_paths, n_steps, rng, antithetic)
+    times = np.arange(n_steps + 1) * (T / n_steps)
+    growth = np.exp((r - q) * times)
+    return martingale * growth
 
 
-def lsm_price(paths, K, dt, r, is_call=False, basis=laguerre_basis, degree=3):
-    """Price an American option on the given paths.
+def lsm_price(paths, K, r, T, is_call=False, degree=3, basis="laguerre"):
+    n_paths, n_nodes = paths.shape
+    n_steps = n_nodes - 1
+    dt = T / n_steps
+    discount_step = np.exp(-r * dt)
+    w = 1.0 if is_call else -1.0
 
-    Parameters
-    ----------
-    paths : ndarray, shape (n_paths, n_steps + 1)
-    K : float
-    dt : float
-        Time between exercise dates in years.
-    r : float
-        Continuously compounded rate, for discounting between dates.
+    payoff = np.maximum(w * (paths - K), 0.0)
+    cashflow = payoff[:, -1].copy()
 
-    Returns
-    -------
-    (price, standard_error)
-    """
-    raise NotImplementedError
+    for step in range(n_steps - 1, 0, -1):
+        cashflow = cashflow * discount_step
+        immediate = payoff[:, step]
+        in_the_money = immediate > 0.0
+        if in_the_money.sum() < degree + 2:
+            continue
+
+        spot_itm = paths[in_the_money, step] / K
+        if basis == "laguerre":
+            design = laguerre_basis(spot_itm, degree)
+        else:
+            design = polynomial_basis(spot_itm, degree)
+
+        coefficients, _, _, _ = np.linalg.lstsq(design, cashflow[in_the_money], rcond=None)
+        continuation = design @ coefficients
+
+        exercise = immediate[in_the_money] > continuation
+        exercise_index = np.where(in_the_money)[0][exercise]
+        cashflow[exercise_index] = immediate[exercise_index]
+
+    discounted = cashflow * discount_step
+    continuation_value = discounted.mean()
+    standard_error = discounted.std(ddof=1) / np.sqrt(n_paths)
+
+    immediate_at_zero = float(np.maximum(w * (paths[0, 0] - K), 0.0))
+    price = max(continuation_value, immediate_at_zero)
+    return price, standard_error
+
+
+def price_american_put(S0, K, r, sigma, T, n_paths=100_000, n_steps_per_year=50,
+                       seed=0, degree=3, basis="laguerre"):
+    n_steps = int(round(n_steps_per_year * T))
+    rng = np.random.default_rng(seed)
+    paths = simulate_spot_paths(S0, r, 0.0, T, sigma, n_paths, n_steps, rng,
+                                antithetic=True)
+    return lsm_price(paths, K, r, T, is_call=False, degree=degree, basis=basis)

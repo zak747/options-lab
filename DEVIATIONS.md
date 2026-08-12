@@ -314,3 +314,57 @@ favourable case would misrepresent antithetic sampling as unconditionally
 useful. The failure is also the more informative result, since it
 demonstrates the condition under which the method works rather than that
 the function runs.
+
+## DD15 — Price taken as the maximum of continuation value and t_0 intrinsic
+
+**Decision.** `lsm_price` returns `max(mean discounted cashflow, payoff at
+t_0)`.
+
+**Alternative rejected.** Returning the regression result directly.
+
+**Reason.** The backward induction values exercise opportunities at
+t_1, ..., t_N only; t_0 is not an exercise date in the algorithm. What it
+computes is therefore the continuation value from t_0, not the option
+price. Measured at S = 30, K = 40, sigma = 0.20, T = 1: the induction
+returns 9.952 against an intrinsic value of 10.000. This does not affect
+LS Table 1, where S is between 36 and 44 and continuation always dominates,
+but it matters wherever immediate exercise is optimal.
+
+---
+
+## DD16 — Default basis degree is 3, chosen by measured convergence
+
+**Decision.** `degree = 3`, i.e. four basis functions.
+
+**Alternative rejected.** Three basis functions, matching the paper's
+description of using the first three Laguerre polynomials.
+
+**Reason.** The LSM estimate is a lower bound in expectation, because the
+exercise policy is estimated from a finite basis and is therefore
+suboptimal. Adding basis functions improves the policy and raises the
+estimate monotonically. Measured at S = 36, sigma = 0.40, T = 2:
+
+    degree 2 -> 8.472    degree 4 -> 8.496
+    degree 3 -> 8.496    degree 5 -> 8.504
+
+with a standard error of 0.023. Degree 2 sits about one standard error
+below the converged value; degree 3 is within noise of degrees 4 and 5.
+The paper's own basis is ambiguous — "the first three Laguerre
+polynomials" may or may not include the constant term — so the degree is
+selected by observed convergence rather than by interpretation.
+
+---
+
+## DD17 — Spot normalised by strike before the regression
+
+**Decision.** The design matrix is built from x = S/K, not from S.
+
+**Alternative rejected.** Passing raw spot to the basis functions.
+
+**Reason.** The weighted Laguerre polynomials carry a factor exp(-x/2). At
+LS Table 1 scale, S ~ 40 gives exp(-20) ~ 2e-9, so every column of the
+design matrix underflows toward zero and the least-squares problem becomes
+numerically meaningless. Normalising by the strike puts x near 1 and keeps
+the condition number below 1e3 for degrees up to 4. The regression is
+invariant to this rescaling in exact arithmetic; it is not in floating
+point.
