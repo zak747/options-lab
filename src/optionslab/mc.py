@@ -28,13 +28,18 @@ def simulate_terminal_sobol(F, T, sigma, n_paths, seed=0):
     return terminal
 
 
-def simulate_paths(F, T, sigma, n_paths, n_steps, rng):
+def simulate_paths(F, T, sigma, n_paths, n_steps, rng, antithetic=False):
     dt = T / n_steps
     v_step = sigma * np.sqrt(dt)
-    z = rng.standard_normal((n_paths, n_steps))
+    if antithetic:
+        n_half = n_paths // 2
+        z_half = rng.standard_normal((n_half, n_steps))
+        z = np.concatenate([z_half, -z_half], axis=0)
+    else:
+        z = rng.standard_normal((n_paths, n_steps))
     log_increments = -0.5 * v_step ** 2 + v_step * z
     log_paths = np.cumsum(log_increments, axis=1)
-    paths = np.empty((n_paths, n_steps + 1))
+    paths = np.empty((z.shape[0], n_steps + 1))
     paths[:, 0] = F
     paths[:, 1:] = F * np.exp(log_paths)
     return paths

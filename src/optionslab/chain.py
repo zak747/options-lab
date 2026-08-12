@@ -13,7 +13,8 @@ def year_fraction(snapshot_time, expiry_time):
 def load_chain(path):
     raw = pd.read_parquet(path)
     renames = {"strike_price": "K", "strike": "K", "expiration": "expiry",
-               "option_type": "right", "bid_price": "bid", "ask_price": "ask"}
+               "option_type": "right", "bid_price": "bid", "ask_price": "ask",
+               "snapshot_ts": "snapshot_utc"}
     chain = raw.rename(columns={k: v for k, v in renames.items() if k in raw.columns})
 
     chain["expiry"] = pd.to_datetime(chain["expiry"], utc=True)

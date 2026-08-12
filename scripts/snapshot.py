@@ -65,13 +65,14 @@ def parse(payload):
         "20" + sym["yy"] + "-" + sym["mm"] + "-" + sym["dd"]
     )
     df["right"] = sym["right"]
+    df["root"] = sym["root"]
     df["strike"] = sym["strike"].astype(float) / 1000.0
 
     df["underlying_last"] = payload["data"].get("close")
     df["snapshot_ts"] = datetime.now(timezone.utc)
 
     keep = [
-        "expiry", "strike", "right", "bid", "ask", "last_trade_price",
+        "expiry", "strike", "right", "root", "bid", "ask", "last_trade_price",
         "volume", "open_interest", "iv", "delta", "gamma",
         "underlying_last", "snapshot_ts",
     ]
