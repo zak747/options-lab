@@ -411,3 +411,71 @@ in the fit; R-squared exceeds 0.9999 in both cases.
 It matters for Phase 6, where the discount factor multiplies every option
 price in the VIX strip. The resulting sensitivity is quantified there
 rather than assumed negligible.
+
+## DD20 — SVI fitted by quasi-explicit reduction, not five-parameter search
+
+**Decision.** Substituting y = (k - m)/s makes the model linear in
+(a, b*s*rho, b*s), so the inner problem is ordinary least squares and only
+the two-dimensional shape parameters (m, s) require an optimiser. Six
+starts, Nelder-Mead on (m, log s).
+
+**Alternative rejected.** Direct minimisation over all five parameters.
+
+**Reason.** The raw SVI objective is non-convex in (m, s) and a
+five-parameter search lands in local minima on ordinary data. The
+reduction removes three parameters from the search entirely and makes the
+remaining problem two-dimensional and cheap enough to restart. Verified by
+exact recovery of known parameters from noiseless SVI data to 6.7e-14; a
+fit that cannot reproduce an exact SVI curve is finding a local minimum
+rather than the solution.
+
+The positivity constraint a + b*s*sqrt(1 - rho^2) >= 0 is applied inside
+the linear subproblem by shifting the level, rather than checked after the
+fit. Raw SVI permits a negative level parameter, and the unconstrained
+solution can fit the quoted strikes well while implying negative total
+variance outside them, which has no implied volatility.
+
+---
+
+## DD21 — Fit weighted by vega relative to bid-ask spread
+
+**Decision.** Weights are (vega / (2 * sigma * T * spread))^2 in total
+variance space.
+
+**Alternative rejected.** Unweighted least squares on total variance.
+
+**Reason.** A residual in total variance maps to a price residual through
+dV = vega * dw / (2 * sigma * T). Dividing by the spread expresses that
+price error in units of quote uncertainty, and squaring gives inverse
+variance weighting. Unweighted fitting lets illiquid wing quotes, whose
+spreads can exceed their mids, pull the surface as hard as tight
+near-money quotes.
+
+RMSE is reported in volatility points rather than variance, because a
+variance residual cannot be compared to a bid-ask spread and a market
+maker quotes in vol points.
+
+---
+
+## DD22 — Butterfly scan uses executable prices and gap-weighted strikes
+
+**Decision.** `butterfly_violations_from_quotes` weights the wings by the
+opposite strike gaps and, in executable mode, prices the legs bought at the
+ask and the leg sold at the bid.
+
+**Alternative rejected.** An unweighted 1-2-1 butterfly evaluated at mid
+quotes.
+
+**Reason.** The 1-2-1 butterfly has a non-negative payoff only when the
+strikes are equally spaced. SPX strike grids are not — 25 points near the
+money, 50 or 100 in the wings — so an unweighted scan reports violations
+that are artefacts of the grid rather than of the prices.
+
+Evaluating at mids is the more consequential error. On a synthetic chain
+with realistic tick rounding, 44 butterfly violations appear at mid and
+zero survive at executable prices. All 44 lie deep in the money, where the
+option is almost entirely intrinsic value and the true convexity across a
+25-point gap is smaller than a tick of quote noise. Reporting mid-quote
+violations as mispricings would therefore be reporting quote noise. This
+is recorded because the executable check is the substantive finding, not a
+refinement of one.
