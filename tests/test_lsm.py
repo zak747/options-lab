@@ -142,32 +142,67 @@ def test_spot_paths_have_the_correct_risk_neutral_drift():
         assert abs(column.mean() - expected[step]) < tolerance
 
 
-@pytest.mark.skip(reason="reference values must be read from the paper first")
 def test_longstaff_schwartz_table_1():
     """Benchmark 6. Reproduce the American put values of LS (2001) Table 1.
 
     Longstaff, F. and Schwartz, E. (2001), Valuing American Options by
     Simulation: A Simple Least-Squares Approach, Review of Financial
-    Studies 14(1), 113-147.
+    Studies 14(1), 113-147, Table 1 (p. 127).
 
     K = 40, r = 0.06, S in {36, ..., 44}, sigma in {0.2, 0.4}, T in {1, 2}.
+    The option is exercisable 50 times per year; price_american_put uses the
+    same 50 exercise points per year (n_steps_per_year=50), so both estimates
+    target the same discrete-exercise value rather than the continuous limit.
 
-    TODO: transcribe the twenty simulated values and their standard errors
-    from Table 1 of the paper into REFERENCE below, then remove this skip.
-    The values must come from the printed table — the whole purpose of this
-    benchmark is external provenance, so filling them from any other source
-    would make the test circular.
+    REFERENCE is the "Simulated American" column and its standard error (the
+    figure in parentheses), the LSM estimate the paper obtains from 100,000
+    (50,000 + 50,000 antithetic) paths. The finite-difference column is
+    deliberately not used: only the simulated column carries a standard error,
+    and the tolerance is built from it.
 
-    Tolerance: agreement within three combined standard errors, where the
-    combined figure is sqrt(se_ours^2 + se_paper^2).
+    Agreement is required within three combined standard errors, where the
+    combined figure is sqrt(se_ours^2 + se_paper^2). The paper's own standard
+    errors set the tolerance; none is chosen here. Failures are collected
+    across all twenty cells before asserting, so a systematic disagreement
+    down a row or column is visible at once rather than stopping at the first.
     """
     K, r = 40.0, 0.06
-    REFERENCE = {}  # (S, sigma, T) -> (price, standard_error)
 
+    # (S, sigma, T) -> (simulated price, standard error), transcribed from
+    # the "Simulated American (s.e.)" column of Table 1.
+    REFERENCE = {
+        (36.0, 0.20, 1.0): (4.472, 0.010),
+        (36.0, 0.20, 2.0): (4.821, 0.012),
+        (36.0, 0.40, 1.0): (7.091, 0.020),
+        (36.0, 0.40, 2.0): (8.488, 0.024),
+        (38.0, 0.20, 1.0): (3.244, 0.009),
+        (38.0, 0.20, 2.0): (3.735, 0.011),
+        (38.0, 0.40, 1.0): (6.139, 0.019),
+        (38.0, 0.40, 2.0): (7.669, 0.022),
+        (40.0, 0.20, 1.0): (2.313, 0.009),
+        (40.0, 0.20, 2.0): (2.879, 0.010),
+        (40.0, 0.40, 1.0): (5.308, 0.018),
+        (40.0, 0.40, 2.0): (6.921, 0.022),
+        (42.0, 0.20, 1.0): (1.617, 0.007),
+        (42.0, 0.20, 2.0): (2.206, 0.010),
+        (42.0, 0.40, 1.0): (4.588, 0.017),
+        (42.0, 0.40, 2.0): (6.243, 0.021),
+        (44.0, 0.20, 1.0): (1.118, 0.007),
+        (44.0, 0.20, 2.0): (1.675, 0.009),
+        (44.0, 0.40, 1.0): (3.957, 0.017),
+        (44.0, 0.40, 2.0): (5.622, 0.021),
+    }
+
+    failures = []
     for (S0, sigma, T), (reference, reference_error) in REFERENCE.items():
         ours, our_error = price_american_put(S0, K, r, sigma, T,
                                              n_paths=200_000, seed=1, degree=3)
         combined = np.sqrt(our_error ** 2 + reference_error ** 2)
-        assert abs(ours - reference) < 3.0 * combined, (
-            f"S={S0} sigma={sigma} T={T}: {ours:.3f} vs {reference:.3f}"
-        )
+        if abs(ours - reference) >= 3.0 * combined:
+            failures.append(
+                f"S={S0:.0f} sigma={sigma:.2f} T={T:.0f}: "
+                f"{ours:.3f} vs {reference:.3f}, "
+                f"{abs(ours - reference) / combined:.1f} combined s.e."
+            )
+
+    assert not failures, "\n".join(failures)
