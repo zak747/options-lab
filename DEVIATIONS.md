@@ -368,3 +368,46 @@ numerically meaningless. Normalising by the strike puts x near 1 and keeps
 the condition number below 1e3 for degrees up to 4. The regression is
 invariant to this rescaling in exact arithmetic; it is not in floating
 point.
+
+## DD18 — Forward extracted by two-pass weighted regression across strikes
+
+**Decision.** `implied_forward` regresses the parity difference C - P on
+strike, weighted by 1/(call spread + put spread)^2. A first pass over all
+paired strikes gives a rough forward; the fit is then repeated on strikes
+within 10% of it.
+
+**Alternative rejected.** CBOE's single-strike method, F = K + exp(rT)(C-P)
+at the strike minimising |C - P|.
+
+**Reason.** Put-call parity holds exactly at every strike, so a regression
+uses all of them and averages away quote noise, while the single-strike
+method inherits the noise of one pair. The second pass exists because deep
+wing strikes have one nearly worthless leg whose parity difference is
+dominated by tick rounding; it is applied after a first estimate because
+"near the money" cannot be defined before the forward is known. Measured
+sensitivity to the band is below 1e-4 relative across 5%, 10% and 20%.
+
+Note that `vix.py` deliberately uses the single-strike method instead, since
+the VIX benchmark requires following CBOE's published specification exactly
+(DD2). The two estimators are expected to differ slightly and the
+difference is quantified in Phase 6.
+
+---
+
+## DD19 — Discount factor is materially less precise than the forward
+
+**Observation, not a choice.** On a synthetic chain with quotes rounded to
+a 0.05 tick and perturbed within the spread, the forward is recovered to
+8.5e-7 relative while the discount factor is recovered only to 1.9e-4 —
+more than two orders of magnitude worse.
+
+**Reason.** The forward enters through the regression intercept, which is
+pinned by the level of the parity difference. The discount factor is the
+slope, estimated from how that difference varies across strikes, and a
+slope estimated over a strike range narrow relative to its absolute level
+is intrinsically noisier. This is a property of the estimator, not a defect
+in the fit; R-squared exceeds 0.9999 in both cases.
+
+It matters for Phase 6, where the discount factor multiplies every option
+price in the VIX strip. The resulting sensitivity is quantified there
+rather than assumed negligible.
