@@ -1,95 +1,124 @@
-"""Monte Carlo pricing and variance reduction.
-
-Simulating a European option is pointless as a pricing exercise — the
-closed form already exists. That is exactly why it is useful: the true
-answer is known, so the effect of each variance reduction technique can be
-*measured* rather than asserted.
-
-Under the risk-neutral measure with forward F,
-
-    S_T = F * exp(-sigma^2*T/2 + sigma*sqrt(T)*Z),   Z ~ N(0,1)
-
-For Europeans only the terminal value is needed; no time stepping.
-Path simulation is required by lsm.py and hedge.py.
-"""
-
 import numpy as np
+from scipy.special import ndtr, ndtri
+from scipy.stats import qmc
 
-__all__ = [
-    "simulate_terminal",
-    "simulate_paths",
-    "mc_price",
-    "control_variate",
-    "convergence_study",
-]
+from optionslab.bs import bs_price, d1_d2
 
 
 def simulate_terminal(F, T, sigma, n_paths, rng, antithetic=False):
-    """Draw terminal values S_T.
-
-    With `antithetic=True`, pair each Z with -Z and return n_paths values
-    in total (i.e. draw n_paths//2 normals). Antithetic helps when the
-    payoff is monotone in Z; it does very little for a straddle, whose
-    payoff is symmetric. Demonstrating the case where it fails is a
-    better result than showing only cases where it works.
-    """
-    raise NotImplementedError
-
-
-def simulate_paths(F, T, sigma, n_paths, n_steps, rng, antithetic=False):
-    """Full GBM paths on a uniform grid. Shape (n_paths, n_steps + 1).
-
-    Needed by lsm.py (exercise decisions at intermediate dates) and
-    hedge.py (rebalancing).
-    """
-    raise NotImplementedError
+    v = sigma * np.sqrt(T)
+    if antithetic:
+        n_half = n_paths // 2
+        z_half = rng.standard_normal(n_half)
+        z = np.concatenate([z_half, -z_half])
+    else:
+        z = rng.standard_normal(n_paths)
+    terminal = F * np.exp(-0.5 * v ** 2 + v * z)
+    return terminal
 
 
-def mc_price(payoffs, df):
-    """Return (price, standard_error).
+def simulate_terminal_sobol(F, T, sigma, n_paths, seed=0):
+    v = sigma * np.sqrt(T)
+    n_bits = int(round(np.log2(n_paths)))
+    engine = qmc.Sobol(d=1, scramble=True, seed=seed)
+    uniforms = engine.random_base2(n_bits).ravel()
+    uniforms = np.clip(uniforms, 1e-15, 1.0 - 1e-15)
+    z = ndtri(uniforms)
+    terminal = F * np.exp(-0.5 * v ** 2 + v * z)
+    return terminal
 
-    Standard error is df * std(payoffs, ddof=1) / sqrt(n). Always return
-    it — an MC price without an error bar is not a result.
-    """
-    raise NotImplementedError
+
+def simulate_paths(F, T, sigma, n_paths, n_steps, rng):
+    dt = T / n_steps
+    v_step = sigma * np.sqrt(dt)
+    z = rng.standard_normal((n_paths, n_steps))
+    log_increments = -0.5 * v_step ** 2 + v_step * z
+    log_paths = np.cumsum(log_increments, axis=1)
+    paths = np.empty((n_paths, n_steps + 1))
+    paths[:, 0] = F
+    paths[:, 1:] = F * np.exp(log_paths)
+    return paths
+
+
+def payoff(terminal, K, is_call=True, straddle=False):
+    w = np.where(is_call, 1.0, -1.0)
+    if straddle:
+        return np.abs(terminal - K)
+    return np.maximum(w * (terminal - K), 0.0)
+
+
+def mc_price(F, K, T, sigma, df, is_call=True, n_paths=100_000, rng=None,
+             antithetic=False, straddle=False):
+    if rng is None:
+        rng = np.random.default_rng(0)
+    terminal = simulate_terminal(F, T, sigma, n_paths, rng, antithetic)
+    discounted = df * payoff(terminal, K, is_call, straddle)
+    if antithetic:
+        n_half = len(discounted) // 2
+        pair_means = 0.5 * (discounted[:n_half] + discounted[n_half:])
+        estimate = pair_means.mean()
+        standard_error = pair_means.std(ddof=1) / np.sqrt(n_half)
+    else:
+        estimate = discounted.mean()
+        standard_error = discounted.std(ddof=1) / np.sqrt(len(discounted))
+    return estimate, standard_error
 
 
 def control_variate(payoffs, control, control_mean):
-    """Optimal-coefficient control variate.
-
-        b* = Cov(Y, X) / Var(X)
-        Y_cv = Y - b*(X - E[X])
-
-    The theoretical variance reduction factor is 1/(1 - rho^2). Return the
-    empirical rho and the achieved VRF as well as the estimate, so that
-    the two can be checked against each other — that agreement is
-    benchmark 5, and it is a genuine internal consistency test rather
-    than a restatement.
-
-    Start with X = S_T (E[X] = F). Then try a delta-based control, which
-    is substantially better.
-
-    Returns
-    -------
-    (estimate, se, b_star, rho, vrf)
-    """
-    raise NotImplementedError
+    control_centred = control - control.mean()
+    payoffs_centred = payoffs - payoffs.mean()
+    b_star = np.sum(payoffs_centred * control_centred) / np.sum(control_centred ** 2)
+    rho = np.corrcoef(payoffs, control)[0, 1]
+    adjusted = payoffs + b_star * (control_mean - control)
+    estimate = adjusted.mean()
+    standard_error = adjusted.std(ddof=1) / np.sqrt(len(adjusted))
+    return estimate, standard_error, b_star, rho
 
 
-def convergence_study(pricer, analytic, n_grid, n_reps, rng):
-    """RMSE against the analytic price as a function of path count.
+def delta_control(paths, K, T, sigma, is_call=True):
+    n_paths, n_nodes = paths.shape
+    n_steps = n_nodes - 1
+    dt = T / n_steps
+    times = np.arange(n_steps) * dt
+    remaining = T - times
+    w = np.where(is_call, 1.0, -1.0)
 
-    For each N in `n_grid`, run `n_reps` independent estimates, take the
-    RMSE against `analytic`, then fit
+    forwards = paths[:, :-1]
+    v = sigma * np.sqrt(remaining)
+    d1, _ = d1_d2(forwards, K, v)
+    deltas = w * ndtr(w * d1)
 
-        log(RMSE) = a + b*log(N)
+    increments = paths[:, 1:] - paths[:, :-1]
+    control = np.sum(deltas * increments, axis=1)
+    return control
 
-    Plain Monte Carlo should give b ~ -0.5 (benchmark 4). Scrambled Sobol
-    should do materially better — use scipy.stats.qmc.Sobol with
-    scramble=True so that error can still be estimated by independent
-    randomisations.
 
-    Returns a DataFrame with columns: n_paths, rmse, mean_se — plus the
-    fitted exponent.
-    """
-    raise NotImplementedError
+def convergence_study(F, K, T, sigma, df, is_call=True, path_counts=None,
+                      n_reps=32, seed=0, method="standard"):
+    if path_counts is None:
+        path_counts = [2 ** k for k in range(10, 21)]
+    exact = float(bs_price(F, K, T, sigma, df, is_call))
+    rng = np.random.default_rng(seed)
+
+    counts = []
+    rmses = []
+    for n_paths in path_counts:
+        errors = np.empty(n_reps)
+        for rep in range(n_reps):
+            if method == "sobol":
+                terminal = simulate_terminal_sobol(F, T, sigma, n_paths,
+                                                   seed=seed * 10_000 + rep)
+                estimate = df * payoff(terminal, K, is_call).mean()
+            elif method == "antithetic":
+                estimate, _ = mc_price(F, K, T, sigma, df, is_call, n_paths, rng,
+                                       antithetic=True)
+            else:
+                estimate, _ = mc_price(F, K, T, sigma, df, is_call, n_paths, rng)
+            errors[rep] = estimate - exact
+        counts.append(n_paths)
+        rmses.append(np.sqrt(np.mean(errors ** 2)))
+
+    counts = np.array(counts, dtype=float)
+    rmses = np.array(rmses)
+    slope, intercept = np.polyfit(np.log(counts), np.log(rmses), 1)
+    return counts, rmses, slope

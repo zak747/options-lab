@@ -277,4 +277,40 @@ conversion is free and strictly better conditioned.
 
 ---
 
-## DD13 — (next entry)
+## DD13 — Antithetic standard error computed from pair means
+
+**Decision.** With antithetic sampling the standard error is the sample
+standard deviation of the n/2 pair means divided by sqrt(n/2), not the
+standard deviation of all n payoffs divided by sqrt(n).
+
+**Alternative rejected.** Treating all n payoffs as an iid sample.
+
+**Reason.** Antithetic draws are deliberately dependent, so the iid formula
+is not a valid estimator of the estimator's variance. Using it reported a
+variance reduction factor of 1.00 for the call — no benefit — when the true
+figure is 1.58, and it concealed the straddle failure entirely by reporting
+0.997 instead of 0.526. Averaging within each pair first restores an iid
+sample of n/2 observations.
+
+---
+
+## DD14 — Antithetic variates reported on a payoff where they fail
+
+**Decision.** The variance reduction study reports antithetic results for a
+straddle alongside a call, and the unit test asserts the straddle VRF is
+below 1.
+
+**Alternative rejected.** Reporting only the call, where the technique
+works.
+
+**Reason.** At equal payoff evaluations,
+
+    VRF = 1 / (1 + rho_anti),   rho_anti = corr(Y(Z), Y(-Z))
+
+so the technique helps only when the payoff is monotone in Z. Measured:
+rho_anti = -0.367 for an ATM call, VRF 1.578; rho_anti = +0.900 for an ATM
+straddle, VRF 0.526 — nearly doubling the variance. Reporting only the
+favourable case would misrepresent antithetic sampling as unconditionally
+useful. The failure is also the more informative result, since it
+demonstrates the condition under which the method works rather than that
+the function runs.
