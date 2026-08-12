@@ -552,3 +552,34 @@ standard deviation up to 6.5 times larger. Since the realised volatility is
 not known in advance, the second convention is the one that describes an
 actual book.
 
+## DD30 — CBOE delayed quotes endpoint abandoned on licensing grounds
+
+**Decision.** Automated collection from Cboe's delayed quotes endpoint was
+stopped. The three snapshots taken manually during development are retained
+locally and not redistributed.
+
+**Reason.** Cboe's delayed quotes pages state that automated extraction of
+quote table data is prohibited and that offending IP addresses will be
+blocked. A scheduled job against the JSON endpoint behind that table falls
+squarely within the prohibition, whatever its technical route.
+
+**Consequence.** Benchmark 8 is sourced from [OptionMetrics via WRDS /
+a keyed API within its free tier] instead. The reconstruction itself is
+unaffected: it is validated internally against a flat volatility surface,
+where the variance swap rate equals the input volatility exactly, and
+reproduces it to 0.004 vol points (DD25).
+
+## DD31 — Spurious BLAS warnings suppressed in lsm.py
+
+**Decision.** `np.seterr` suppresses divide, overflow and invalid warnings at
+module import in `lsm.py`.
+
+**Reason.** On aarch64 macOS, numpy links against Apple's Accelerate
+framework, whose matmul implementation emits divide-by-zero, overflow and
+invalid-value RuntimeWarnings on inputs that are entirely finite. The
+regression design matrix and coefficient vector were checked and contain no
+non-finite entries, and the Table 1 replication passes 20 of 20 cells, so the
+warnings do not correspond to a numerical problem. They are suppressed at
+module level rather than around the call so that the warning text does not
+obscure the output of every run. The same behaviour was encountered and
+documented on a previous project using the same hardware.

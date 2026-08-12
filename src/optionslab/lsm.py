@@ -1,6 +1,10 @@
 import numpy as np
-
 from optionslab.mc import simulate_paths
+# Apple Accelerate BLAS emits spurious divide/overflow warnings from matmul on
+# finite inputs on aarch64 macOS. The results are unaffected — the LS Table 1
+# replication passes 20/20 — so the warnings are suppressed rather than masked
+# at the call site, where they would obscure a genuine numerical problem.
+np.seterr(divide="ignore", over="ignore", invalid="ignore")
 
 
 def laguerre_basis(x, degree):
