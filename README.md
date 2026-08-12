@@ -10,7 +10,8 @@ implemented from first principles in Python.
 | Result | Target | Achieved |
 |--------|--------|----------|
 | VIX reconstructed from raw SPX chains vs CBOE published close | < 0.20 vol points | pending data collection |
-| American put table, Longstaff & Schwartz (2001) | within published s.e. | pending |
+| American put table, Longstaff & Schwartz (2001) | within published s.e. | 20/20 cells within published s.e. |
+| Black-Scholes against Hull's worked example | to the book's 2 d.p. | 4.7594 / 0.8086 vs 4.76 / 0.81 |
 | Monte Carlo convergence exponent | -0.50 ± 0.02 | -0.5054 |
 | Discrete hedging error exponent | -0.50 ± 0.05 | -0.4869 ± 0.0010 |
 | SVI static arbitrage violations | 0 | 0 |

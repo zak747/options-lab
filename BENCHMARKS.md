@@ -17,9 +17,9 @@ its justification are recorded rather than the original quietly dropped.
 | 3  | Implied vol round-trip recovery | Conditioning of the inversion | abs err < 1e-10, vega > 1e-4 of notional § | 1.46e-12 | yes | `tests/test_iv.py` |
 | 4  | Monte Carlo convergence exponent | CLT: RMSE ~ N^(-1/2) | -0.50 ± 0.02 | -0.5054 | yes | `scripts/run_mc_study.py` |
 | 5  | Control variate VRF vs 1/(1-rho^2) | Theory | agreement within 5% | 4.81 vs 4.81; 182.6 vs 182.6 | yes | `scripts/run_mc_study.py` |
-| 6  | American put price table | Longstaff & Schwartz (2001), *RFS* 14(1) | within published s.e. | **pending** | — | `scripts/run_lsm_replication.py` |
+| 6  | American put price table | Longstaff & Schwartz (2001), *RFS* 14(1), Table 1 | within published s.e. | 20/20 cells pass; max 1.10 combined s.e., mean z = -0.02 | yes | `scripts/run_lsm_replication.py` |
 | 7  | Discrete hedging error exponent | Boyle & Emanuel (1980) | -0.50 ± 0.05 | -0.4869 ± 0.0010 | yes | `scripts/run_hedge_study.py` |
-| 8  | **VIX reconstruction vs CBOE published close** | CBOE VIX white paper | abs err < 0.20 vol pts | **pending data** | — | `scripts/run_vix_benchmark.py` |
+| 8  | VIX reconstruction vs CBOE published close | CBOE VIX white paper | abs err < 0.20 vol pts | **pending data** | — | `scripts/run_vix_benchmark.py` |
 | 9  | SVI static arbitrage violations | Gatheral & Jacquier (2014) | 0 (butterfly and calendar) | 0 | yes | `scripts/run_surface_fit.py` |
 | 10 | Forward and discount factor from put-call parity | Algebraic identity | rel err < 1e-4 | 8.5e-7 (F), 1.9e-4 (DF) | yes | `tests/test_chain.py` |
 | 11 | Implied vol vs CBOE's published per-option IV | CBOE delayed quotes | target set after first day's distribution | **pending data** | — | `scripts/run_iv_crosscheck.py` |

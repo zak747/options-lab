@@ -179,8 +179,9 @@ def test_hull_worked_example():
     T = 0.5, for which the book quotes c = 4.76 and p = 0.81 to two decimals.
     Those are exactly the closed-form values these parameters imply, and the
     implementation returns 4.7594 and 0.8086, so the check is genuine rather
-    than circular. Record the edition and page from your copy: the example
-    sits in the Black-Scholes-Merton chapter (Ch. 15 in the 9th-11th eds.).
+    than circular. The parameters are the standard textbook example; the
+    quoted values have not been checked against a printed copy, so this test
+    currently verifies the closed form rather than an external source.
     """
     S, K, r, sigma, T = 42.0, 40.0, 0.10, 0.20, 0.5
     F = forward_from_spot(S, r, 0.0, T)
