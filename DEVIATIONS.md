@@ -479,3 +479,48 @@ option is almost entirely intrinsic value and the true convexity across a
 violations as mispricings would therefore be reporting quote noise. This
 is recorded because the executable check is the substantive finding, not a
 refinement of one.
+
+## DD27 — Hedging uses spot delta, not the forward delta returned by bs_greeks
+
+**Decision.** `hedge.spot_delta` computes dV/dS = N(d1) directly rather
+than calling `bs_greeks` and using its delta.
+
+**Alternative rejected.** Using bs_greeks(...)["delta"] as the hedge ratio.
+
+**Reason.** Under the forward parameterisation (DD1, DD6) bs_greeks returns
+dV/dF = df*N(d1). The hedge trades the underlying, so the required ratio is
+
+    dV/dS = dV/dF * dF/dS = df*N(d1) * exp(r*tau) = N(d1)
+
+and the discount factor cancels. Using the forward delta would understate
+every position by df — about 2% at r = 2% and one year to expiry. The
+error produces no exception and no obviously wrong number; it appears only
+as a small systematic P&L bias that is hard to attribute after the fact.
+Verified against a finite difference of the price with respect to spot.
+
+---
+
+## DD28 — Measured hedging exponent is -0.487, not -0.500
+
+**Observation, not a choice.** The fitted exponent over n in [10, 640] is
+-0.4869 with a standard error of 0.0010, i.e. thirteen standard errors
+from the theoretical -0.5.
+
+**Reason.** Boyle & Emanuel's result is asymptotic in n. Restricting the
+fit to larger n moves the estimate monotonically toward the limit:
+
+    fit from n =  10 -> -0.4879
+    fit from n =  40 -> -0.4895
+    fit from n = 160 -> -0.4946
+
+The discrepancy is a finite-n correction, not a defect in the simulation.
+It is recorded because reporting -0.49 as though it were -0.50 would
+misrepresent the precision, and because the direction and magnitude of the
+correction are themselves evidence the experiment is behaving correctly.
+
+---
+
+## DD29 — Volatility mismatch reported for two hedging conventions
+
+**Decision.** `vol_mismatch_study` runs with the hedge delta computed
+either at the realised
